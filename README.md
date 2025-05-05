@@ -74,17 +74,14 @@ kxctl exec -f -i prod -- apply -f deployment.yaml
 # Show problematic pods in the current namespace
 kxctl status
 
-# Show problematic pods across all namespaces
-kxctl status -A
-
 # Show problematic pods in production clusters
 kxctl status -i prod -A
 
 # Show problematic pods with additional kubectl args
 kxctl status -- -o json
 
-# Show problematic pods across all namespaces with custom output format
-kxctl status -A -- -o custom-columns=NAME:.metadata.name,STATUS:.status.phase
+# Show problematic pods across namespace webapp
+kxctl status -- --namespace webapp
 ```
 
 ## License
