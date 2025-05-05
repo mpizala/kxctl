@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
@@ -16,12 +16,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '^1.24'
-      
+          go-version: "^1.24"
+
       - name: Setup Go Cache
         uses: actions/cache@v3
         with:
@@ -40,3 +40,70 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout homebrew-kxctl
+        uses: actions/checkout@v4
+        with:
+          repository: mpizala/homebrew-kxctl
+          path: homebrew-kxctl
+          token: ${{ secrets.HOMEBREW_PAT }}
+
+      - name: Get release info
+        id: release
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const release = await github.rest.repos.getRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id
+            });
+
+            // Extract version without the 'v' prefix
+            const version = release.data.tag_name.replace(/^v/, '');
+
+            // Find Darwin arm64 asset
+            const darwinArm64Asset = release.data.assets.find(asset => 
+              asset.name.includes('Darwin_arm64.tar.gz'));
+
+            if (!darwinArm64Asset) {
+              core.setFailed('Darwin arm64 asset not found');
+              return;
+            }
+
+            return {
+              version: version,
+              download_url: darwinArm64Asset.browser_download_url
+            };
+
+      - name: Download release asset and calculate SHA256
+        id: sha
+        run: |
+          DOWNLOAD_URL="${{ fromJson(steps.release.outputs.result).download_url }}"
+          curl -L -o kxctl.tar.gz "$DOWNLOAD_URL"
+          SHA256=$(shasum -a 256 kxctl.tar.gz | awk '{print $1}')
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+
+      - name: Update Homebrew formula
+        run: |
+          VERSION="${{ fromJson(steps.release.outputs.result).version }}"
+          DOWNLOAD_URL="${{ fromJson(steps.release.outputs.result).download_url }}"
+          SHA256="${{ steps.sha.outputs.sha256 }}"
+
+          cd homebrew-kxctl
+
+          sed -i "s|url \".*\"|url \"$DOWNLOAD_URL\"|g" kxctl.rb
+          sed -i "s|sha256 \".*\"|sha256 \"$SHA256\"|g" kxctl.rb
+          sed -i "s|version \".*\"|version \"$VERSION\"|g" kxctl.rb
+
+      - name: Commit and push changes
+        run: |
+          cd homebrew-kxctl
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add kxctl.rb
+          git commit -m "Update formula for kxctl version ${{ fromJson(steps.release.outputs.result).version }}"
+          git push
