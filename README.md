@@ -39,10 +39,6 @@ Commands:
   version     Display version information
   help        Display help information
 
-Notes:
-  - No command provided: shows help information
-  - Leading flags without command: treated as 'exec'
-
 Flags:
   -i, --include pattern   Include contexts matching pattern (can be used multiple times)
   -e, --exclude pattern   Exclude contexts matching pattern (can be used multiple times)
