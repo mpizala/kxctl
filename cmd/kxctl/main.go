@@ -11,7 +11,8 @@ import (
 	"github.com/mpizala/kxctl/pkg/kubernetes"
 )
 
-const version = "0.1.0"
+// Version is set during the build process (see .goreleaser.yaml)
+var version = "dev"
 
 type stringSliceFlag []string
 
