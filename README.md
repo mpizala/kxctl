@@ -26,6 +26,7 @@ Usage:
 Commands:
   list        List available contexts
   exec        Execute kubectl command on filtered contexts
+  status      Show pods not in Running or Succeeded state
   version     Display version information
   help        Display help information
 
@@ -37,6 +38,7 @@ Flags:
   -i, --include pattern   Include contexts matching pattern (can be used multiple times)
   -e, --exclude pattern   Exclude contexts matching pattern (can be used multiple times)
   -f, --force             Force execution of write operations
+  -A, --all-namespaces    Show resources across all namespaces (status command)
   -h, --help              Display help information
 ```
 
@@ -63,6 +65,21 @@ kxctl -i prod -- get pods
 
 # Run a write operation with force flag
 kxctl exec -f -i prod -- apply -f deployment.yaml
+
+# Show problematic pods in the current namespace
+kxctl status
+
+# Show problematic pods across all namespaces
+kxctl status -A
+
+# Show problematic pods in production clusters
+kxctl status -i prod -A
+
+# Show problematic pods with additional kubectl args
+kxctl status -- -o json
+
+# Show problematic pods across all namespaces with custom output format
+kxctl status -A -- -o custom-columns=NAME:.metadata.name,STATUS:.status.phase
 ```
 
 ## License

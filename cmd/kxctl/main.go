@@ -25,9 +25,10 @@ func (s *stringSliceFlag) Set(value string) error {
 }
 
 type commandFlags struct {
-	include stringSliceFlag
-	exclude stringSliceFlag
-	force   bool
+	include       stringSliceFlag
+	exclude       stringSliceFlag
+	force         bool
+	allNamespaces bool
 }
 
 func main() {
@@ -68,6 +69,8 @@ func run() error {
 		return runList(args)
 	case "exec":
 		return runExec(args)
+	case "status":
+		return runStatus(args)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", cmd)
 		printHelp()
@@ -181,6 +184,8 @@ func parseFlags(args []string) (commandFlags, error) {
 			i++
 		case "-f", "--force":
 			flags.force = true
+		case "-A", "--all-namespaces":
+			flags.allNamespaces = true
 		default:
 			if strings.HasPrefix(args[i], "-") {
 				return flags, fmt.Errorf("unknown flag: %s", args[i])
@@ -193,6 +198,58 @@ func parseFlags(args []string) (commandFlags, error) {
 	return flags, nil
 }
 
+func runStatus(args []string) error {
+	// Extract kubectl args after --
+	var kubectlAdditionalArgs []string
+	var flagArgs []string
+	cmdIndex := -1
+
+	for i, arg := range args {
+		if arg == "--" {
+			cmdIndex = i
+			break
+		}
+	}
+
+	if cmdIndex != -1 {
+		flagArgs = args[:cmdIndex]
+		kubectlAdditionalArgs = args[cmdIndex+1:]
+	} else {
+		flagArgs = args
+	}
+
+	flags, err := parseFlags(flagArgs)
+	if err != nil {
+		return err
+	}
+
+	client, err := kubernetes.NewClient()
+	if err != nil {
+		return fmt.Errorf("failed to create kubernetes client: %w", err)
+	}
+
+	filteredContexts := filter.FilterContexts(client.Contexts, flags.include, flags.exclude)
+	if len(filteredContexts) == 0 {
+		return errors.New("no contexts match the provided filters")
+	}
+
+	// Construct the kubectl command to get pods that are not Running or Succeeded
+	kubectlArgs := []string{
+		"get", "pods",
+		"--field-selector", "status.phase!=Running,status.phase!=Succeeded",
+	}
+
+	if flags.allNamespaces {
+		kubectlArgs = append(kubectlArgs, "--all-namespaces")
+	}
+
+	// Add any additional arguments provided after --
+	kubectlArgs = append(kubectlArgs, kubectlAdditionalArgs...)
+
+	// Execute the command on all filtered contexts
+	return client.ExecuteCommand(context.Background(), kubectlArgs, filteredContexts, false)
+}
+
 func printHelp() {
 	fmt.Print(`kxctl - Kubernetes Context Control
 
@@ -202,6 +259,7 @@ Usage:
 Commands:
   list        List available contexts
   exec        Execute kubectl command on filtered contexts
+  status      Show pods not in Running or Succeeded state
   version     Display version information
   help        Display help information
 
@@ -213,6 +271,7 @@ Flags:
   -i, --include pattern   Include contexts matching pattern (can be used multiple times)
   -e, --exclude pattern   Exclude contexts matching pattern (can be used multiple times)
   -f, --force             Force execution of write operations
+  -A, --all-namespaces    Show resources across all namespaces (status command)
   -h, --help              Display this help information
 
 Examples:
@@ -236,5 +295,17 @@ Examples:
   
   # Run a write operation with force flag
   kxctl exec -f -i prod -- apply -f deployment.yaml
+  
+  # Show problematic pods in the current namespace
+  kxctl status
+  
+  # Show problematic pods across all namespaces
+  kxctl status -A
+  
+  # Show problematic pods with additional kubectl args
+  kxctl status -- -o json
+  
+  # Show problematic pods across all namespaces with custom output format
+  kxctl status -A -- -o custom-columns=NAME:.metadata.name,STATUS:.status.phase
 `)
 }
