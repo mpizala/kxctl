@@ -1,4 +1,4 @@
-# kxctl
+# kxctl - kubectl for cross-cluster activities
 
 A command-line utility that enhances the usability of kubectl by applying filters and various commands across multiple Kubernetes contexts.
 
