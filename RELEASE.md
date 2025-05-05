@@ -20,6 +20,7 @@ The GitHub Actions workflow will automatically:
 - Build binaries for multiple platforms (Linux, macOS, Windows)
 - Create a GitHub release with these binaries
 - Generate checksums for verification
+- Update the Homebrew formula to the latest version
 
 ## Versioning
 

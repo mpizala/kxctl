@@ -42,6 +42,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   update-homebrew:
+    needs: goreleaser
     runs-on: ubuntu-latest
     steps:
       - name: Checkout homebrew-kxctl
@@ -56,11 +57,25 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            const release = await github.rest.repos.getRelease({
+            // Get the tag name from the github context
+            const tagName = context.ref.replace('refs/tags/', '');
+            
+            // Add a delay to ensure assets are published
+            console.log('Waiting for release assets to be published...');
+            await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds
+            
+            // Fetch the latest release by tag name
+            const release = await github.rest.repos.getReleaseByTag({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              release_id: context.payload.release.id
+              tag: tagName
             });
+            
+            // Check if release has assets
+            if (!release.data.assets || release.data.assets.length === 0) {
+              core.setFailed('Release assets not found. Release might be still processing.');
+              return;
+            }
 
             // Extract version without the 'v' prefix
             const version = release.data.tag_name.replace(/^v/, '');
@@ -105,5 +120,14 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add kxctl.rb
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit. Formula might already be up to date."
+            exit 0
+          fi
+          
           git commit -m "Update formula for kxctl version ${{ fromJson(steps.release.outputs.result).version }}"
           git push
+          
+          echo "Successfully updated Homebrew formula for kxctl version ${{ fromJson(steps.release.outputs.result).version }}"
