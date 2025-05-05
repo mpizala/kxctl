@@ -1,0 +1,16 @@
+# Binary
+kxctl
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.exe
+*.dll
+*.dylib
+
+# Go specific
+/vendor/
+/dist/
+*.test
+*.out
