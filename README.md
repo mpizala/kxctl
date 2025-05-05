@@ -6,6 +6,7 @@ A command-line utility that enhances the usability of kubectl by applying filter
 
 - Execute kubectl commands across multiple contexts
 - Filter contexts using include/exclude patterns
+- Safety checks for write operations requiring explicit confirmation
 - Simplify common Kubernetes operations across multiple clusters
 
 ## Installation
@@ -35,6 +36,7 @@ Notes:
 Flags:
   -i, --include pattern   Include contexts matching pattern (can be used multiple times)
   -e, --exclude pattern   Exclude contexts matching pattern (can be used multiple times)
+  -f, --force             Force execution of write operations
   -h, --help              Display help information
 ```
 
@@ -58,6 +60,9 @@ kxctl exec -e staging -- get pods
 
 # Shorthand syntax (starting with flags implies 'exec')
 kxctl -i prod -- get pods
+
+# Run a write operation with force flag
+kxctl exec -f -i prod -- apply -f deployment.yaml
 ```
 
 ## License

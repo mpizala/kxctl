@@ -27,6 +27,7 @@ func (s *stringSliceFlag) Set(value string) error {
 type commandFlags struct {
 	include stringSliceFlag
 	exclude stringSliceFlag
+	force   bool
 }
 
 func main() {
@@ -158,7 +159,7 @@ func runExec(args []string) error {
 	}
 
 	// Execute kubectl command on filtered contexts
-	return client.ExecuteCommand(context.Background(), kubectlArgs, filteredContexts)
+	return client.ExecuteCommand(context.Background(), kubectlArgs, filteredContexts, flags.force)
 }
 
 func parseFlags(args []string) (commandFlags, error) {
@@ -178,6 +179,8 @@ func parseFlags(args []string) (commandFlags, error) {
 			}
 			flags.exclude = append(flags.exclude, args[i+1])
 			i++
+		case "-f", "--force":
+			flags.force = true
 		default:
 			if strings.HasPrefix(args[i], "-") {
 				return flags, fmt.Errorf("unknown flag: %s", args[i])
@@ -209,6 +212,7 @@ Notes:
 Flags:
   -i, --include pattern   Include contexts matching pattern (can be used multiple times)
   -e, --exclude pattern   Exclude contexts matching pattern (can be used multiple times)
+  -f, --force             Force execution of write operations
   -h, --help              Display this help information
 
 Examples:
@@ -229,5 +233,8 @@ Examples:
 
   # Shorthand syntax (starting with flags implies 'exec')
   kxctl -i prod -- get pods
+  
+  # Run a write operation with force flag
+  kxctl exec -f -i prod -- apply -f deployment.yaml
 `)
 }

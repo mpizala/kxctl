@@ -37,8 +37,42 @@ func GetContexts() ([]string, error) {
 	return contexts, nil
 }
 
+// isWriteOperation checks if the kubectl command is a write operation (non-read-only)
+func isWriteOperation(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+
+	// List of kubectl verbs that modify resources
+	writeVerbs := map[string]bool{
+		"apply":     true,
+		"create":    true,
+		"delete":    true,
+		"edit":      true,
+		"patch":     true,
+		"replace":   true,
+		"scale":     true,
+		"set":       true,
+		"label":     true,
+		"annotate":  true,
+		"taint":     true,
+		"drain":     true,
+		"cordon":    true,
+		"uncordon":  true,
+		"rollout":   true,
+		"autoscale": true,
+	}
+
+	// Check first argument as the verb
+	return writeVerbs[args[0]]
+}
+
 // ExecuteCommand executes a kubectl command in the specified contexts
-func (c *Client) ExecuteCommand(ctx context.Context, kubectlArgs []string, contexts []string) error {
+func (c *Client) ExecuteCommand(ctx context.Context, kubectlArgs []string, contexts []string, force bool) error {
+	if isWriteOperation(kubectlArgs) && !force {
+		return fmt.Errorf("write operation detected: '%s'. Use --force flag to confirm", strings.Join(kubectlArgs, " "))
+	}
+
 	for _, context := range contexts {
 		fmt.Printf("Context: %s\n", context)
 

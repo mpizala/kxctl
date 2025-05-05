@@ -35,7 +35,7 @@ func TestExecuteCommand(t *testing.T) {
 
 	// This test doesn't actually execute kubectl since the context is fake
 	// It just verifies that the function doesn't panic
-	err := client.ExecuteCommand(context.Background(), []string{"version", "--client"}, []string{"test-context"})
+	err := client.ExecuteCommand(context.Background(), []string{"version", "--client"}, []string{"test-context"}, true)
 	if err != nil {
 		t.Fatalf("ExecuteCommand() unexpected error: %v", err)
 	}
