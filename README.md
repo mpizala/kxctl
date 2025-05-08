@@ -14,8 +14,7 @@ A command-line utility that enhances the usability of kubectl by applying filter
 ### Using Homebrew (macOS and Linux)
 
 ```bash
-brew tap mpizala/kxctl
-brew install kxctl
+brew install mpizala/tap/kxctl
 ```
 
 ### Using Go

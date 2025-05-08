@@ -45,11 +45,11 @@ jobs:
     needs: goreleaser
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout homebrew-kxctl
+      - name: Checkout homebrew-tap
         uses: actions/checkout@v4
         with:
-          repository: mpizala/homebrew-kxctl
-          path: homebrew-kxctl
+          repository: mpizala/homebrew-tap
+          path: homebrew-tap
           token: ${{ secrets.HOMEBREW_PAT }}
 
       - name: Get release info
@@ -108,18 +108,18 @@ jobs:
           DOWNLOAD_URL="${{ fromJson(steps.release.outputs.result).download_url }}"
           SHA256="${{ steps.sha.outputs.sha256 }}"
 
-          cd homebrew-kxctl
+          cd homebrew-tap
 
-          sed -i "s|url \".*\"|url \"$DOWNLOAD_URL\"|g" kxctl.rb
-          sed -i "s|sha256 \".*\"|sha256 \"$SHA256\"|g" kxctl.rb
-          sed -i "s|version \".*\"|version \"$VERSION\"|g" kxctl.rb
+          sed -i "s|url \".*\"|url \"$DOWNLOAD_URL\"|g" Formula/kxctl.rb
+          sed -i "s|sha256 \".*\"|sha256 \"$SHA256\"|g" Formula/kxctl.rb
+          sed -i "s|version \".*\"|version \"$VERSION\"|g" Formula/kxctl.rb
 
       - name: Commit and push changes
         run: |
-          cd homebrew-kxctl
+          cd homebrew-tap
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add kxctl.rb
+          git add Formula/kxctl.rb
           
           # Check if there are changes to commit
           if git diff --staged --quiet; then
