@@ -41,6 +41,7 @@ Commands:
 Flags:
   -i, --include pattern   Include contexts matching pattern (can be used multiple times)
   -e, --exclude pattern   Exclude contexts matching pattern (can be used multiple times)
+  -t, --timeout duration  Set timeout for kubectl commands (e.g. 30s, 1m, 2m30s)
   -f, --force             Force execution of write operations
   -A, --all-namespaces    Show resources across all namespaces (status command)
   -h, --help              Display help information
@@ -81,6 +82,9 @@ kxctl status -- -o json
 
 # Show problematic pods across namespace webapp
 kxctl status -- --namespace webapp
+
+# Run a command with a timeout (useful for slow or unresponsive clusters)
+kxctl exec -t 30s -- get pods
 ```
 
 ## License
