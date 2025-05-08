@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/mpizala/kxctl/pkg/filter"
 	"github.com/mpizala/kxctl/pkg/kubernetes"
@@ -30,6 +31,7 @@ type commandFlags struct {
 	exclude       stringSliceFlag
 	force         bool
 	allNamespaces bool
+	timeout       time.Duration
 }
 
 func main() {
@@ -163,7 +165,7 @@ func runExec(args []string) error {
 	}
 
 	// Execute kubectl command on filtered contexts
-	return client.ExecuteCommand(context.Background(), kubectlArgs, filteredContexts, flags.force)
+	return client.ExecuteCommand(context.Background(), kubectlArgs, filteredContexts, flags.force, flags.timeout)
 }
 
 func parseFlags(args []string) (commandFlags, error) {
@@ -182,6 +184,16 @@ func parseFlags(args []string) (commandFlags, error) {
 				return flags, errors.New("exclude flag requires a value")
 			}
 			flags.exclude = append(flags.exclude, args[i+1])
+			i++
+		case "-t", "--timeout":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return flags, errors.New("timeout flag requires a value")
+			}
+			duration, err := time.ParseDuration(args[i+1])
+			if err != nil {
+				return flags, fmt.Errorf("invalid timeout value: %s", args[i+1])
+			}
+			flags.timeout = duration
 			i++
 		case "-f", "--force":
 			flags.force = true
@@ -248,7 +260,7 @@ func runStatus(args []string) error {
 	kubectlArgs = append(kubectlArgs, kubectlAdditionalArgs...)
 
 	// Execute the command on all filtered contexts
-	return client.ExecuteCommand(context.Background(), kubectlArgs, filteredContexts, false)
+	return client.ExecuteCommand(context.Background(), kubectlArgs, filteredContexts, false, flags.timeout)
 }
 
 func printHelp() {
@@ -271,6 +283,7 @@ Notes:
 Flags:
   -i, --include pattern   Include contexts matching pattern (can be used multiple times)
   -e, --exclude pattern   Exclude contexts matching pattern (can be used multiple times)
+  -t, --timeout duration  Set timeout for kubectl commands (e.g. 30s, 1m, 2m30s)
   -f, --force             Force execution of write operations
   -A, --all-namespaces    Show resources across all namespaces (status command)
   -h, --help              Display this help information
@@ -308,5 +321,8 @@ Examples:
   
   # Show problematic pods across all namespaces with custom output format
   kxctl status -A -- -o custom-columns=NAME:.metadata.name,STATUS:.status.phase
+  
+  # Execute commands with a timeout (useful for slow or unresponsive clusters)
+  kxctl exec -t 30s -- get pods
 `)
 }

@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
+	"time"
 )
 
 // Client represents a kubectl client interface
@@ -68,23 +70,72 @@ func isWriteOperation(args []string) bool {
 }
 
 // ExecuteCommand executes a kubectl command in the specified contexts
-func (c *Client) ExecuteCommand(ctx context.Context, kubectlArgs []string, contexts []string, force bool) error {
+// If timeout is greater than 0, it will be applied to each command execution
+func (c *Client) ExecuteCommand(ctx context.Context, kubectlArgs []string, contexts []string, force bool, timeout time.Duration) error {
 	if isWriteOperation(kubectlArgs) && !force {
 		return fmt.Errorf("write operation detected: '%s'. Use --force flag to confirm", strings.Join(kubectlArgs, " "))
 	}
 
-	for _, context := range contexts {
-		fmt.Printf("Context: %s\n", context)
+	// Create a wait group to wait for all commands to complete
+	var wg sync.WaitGroup
+	wg.Add(len(contexts))
 
-		args := append([]string{"--context", context}, kubectlArgs...)
-		cmd := exec.CommandContext(ctx, "kubectl", args...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+	// Create a mutex to protect concurrent writes to stdout/stderr
+	var outputMutex sync.Mutex
 
-		if err := cmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error in context %s: %v\n", context, err)
-		}
+	// Execute commands in parallel
+	for _, contextName := range contexts {
+		// Capture the current context for goroutine
+		currentContext := contextName
+
+		go func() {
+			defer wg.Done()
+
+			// Create the kubectl command with context
+			args := append([]string{"--context", currentContext}, kubectlArgs...)
+			cmd := exec.CommandContext(ctx, "kubectl", args...)
+
+			// Set a timeout if specified
+			if timeout > 0 {
+				timer := time.AfterFunc(timeout, func() {
+					cmd.Process.Kill()
+				})
+				defer timer.Stop()
+			}
+
+			// Capture output
+			output, err := cmd.CombinedOutput()
+			outputStr := string(output)
+
+			// Print output and handle errors
+			outputMutex.Lock()
+			fmt.Printf("Context: %s\n", currentContext)
+
+			// Process output line by line to ensure context association
+			lines := strings.Split(outputStr, "\n")
+			for _, line := range lines {
+				if line != "" {
+					fmt.Printf("  %s\n", line)
+				}
+			}
+
+			// Handle errors
+			if err != nil {
+				// Check if it was killed by timeout
+				if timeout > 0 && cmd.ProcessState != nil && cmd.ProcessState.Exited() == false {
+					fmt.Fprintf(os.Stderr, "  Timeout after %s\n", timeout)
+				} else {
+					fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
+				}
+			}
+
+			// Add a separator line for readability between contexts
+			fmt.Println()
+			outputMutex.Unlock()
+		}()
 	}
 
+	// Wait for all commands to complete
+	wg.Wait()
 	return nil
 }
