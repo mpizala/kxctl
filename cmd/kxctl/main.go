@@ -32,6 +32,7 @@ type commandFlags struct {
 	force         bool
 	allNamespaces bool
 	timeout       time.Duration
+	grep          string
 }
 
 func main() {
@@ -165,7 +166,7 @@ func runExec(args []string) error {
 	}
 
 	// Execute kubectl command on filtered contexts
-	return client.ExecuteCommand(context.Background(), kubectlArgs, filteredContexts, flags.force, flags.timeout)
+	return client.ExecuteCommand(context.Background(), kubectlArgs, filteredContexts, flags.force, flags.timeout, flags.grep)
 }
 
 func parseFlags(args []string) (commandFlags, error) {
@@ -184,6 +185,12 @@ func parseFlags(args []string) (commandFlags, error) {
 				return flags, errors.New("exclude flag requires a value")
 			}
 			flags.exclude = append(flags.exclude, args[i+1])
+			i++
+		case "-g", "--grep":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return flags, errors.New("grep flag requires a value")
+			}
+			flags.grep = args[i+1]
 			i++
 		case "-t", "--timeout":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
@@ -260,7 +267,7 @@ func runStatus(args []string) error {
 	kubectlArgs = append(kubectlArgs, kubectlAdditionalArgs...)
 
 	// Execute the command on all filtered contexts
-	return client.ExecuteCommand(context.Background(), kubectlArgs, filteredContexts, false, flags.timeout)
+	return client.ExecuteCommand(context.Background(), kubectlArgs, filteredContexts, false, flags.timeout, flags.grep)
 }
 
 func printHelp() {
@@ -283,6 +290,7 @@ Notes:
 Flags:
   -i, --include pattern   Include contexts matching pattern (can be used multiple times)
   -e, --exclude pattern   Exclude contexts matching pattern (can be used multiple times)
+  -g, --grep pattern      Filter command output to lines matching pattern
   -t, --timeout duration  Set timeout for kubectl commands (e.g. 30s, 1m, 2m30s)
   -f, --force             Force execution of write operations
   -A, --all-namespaces    Show resources across all namespaces (status command)
@@ -324,5 +332,11 @@ Examples:
   
   # Execute commands with a timeout (useful for slow or unresponsive clusters)
   kxctl exec -t 30s -- get pods
+  
+  # Filter kubectl output to only show lines matching a pattern
+  kxctl exec -- get pods -A | grep stack1
+  
+  # Filter kubectl output with pipe-like syntax using the --grep flag
+  kxctl exec -g "stack1|stack2" -- get pods -A
 `)
 }

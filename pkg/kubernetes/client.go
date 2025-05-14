@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -71,7 +72,8 @@ func isWriteOperation(args []string) bool {
 
 // ExecuteCommand executes a kubectl command in the specified contexts
 // If timeout is greater than 0, it will be applied to each command execution
-func (c *Client) ExecuteCommand(ctx context.Context, kubectlArgs []string, contexts []string, force bool, timeout time.Duration) error {
+// If grepPattern is not empty, output will be filtered to lines matching the pattern
+func (c *Client) ExecuteCommand(ctx context.Context, kubectlArgs []string, contexts []string, force bool, timeout time.Duration, grepPattern string) error {
 	if isWriteOperation(kubectlArgs) && !force {
 		return fmt.Errorf("write operation detected: '%s'. Use --force flag to confirm", strings.Join(kubectlArgs, " "))
 	}
@@ -115,7 +117,10 @@ func (c *Client) ExecuteCommand(ctx context.Context, kubectlArgs []string, conte
 			lines := strings.Split(outputStr, "\n")
 			for _, line := range lines {
 				if line != "" {
-					fmt.Printf("  %s\n", line)
+					// Filter lines by grep pattern if provided
+					if grepPattern == "" || matchesGrepPattern(line, grepPattern) {
+						fmt.Printf("  %s\n", line)
+					}
 				}
 			}
 
@@ -138,4 +143,32 @@ func (c *Client) ExecuteCommand(ctx context.Context, kubectlArgs []string, conte
 	// Wait for all commands to complete
 	wg.Wait()
 	return nil
+}
+
+// matchesGrepPattern checks if a line matches the grep pattern
+// Supports either standard string contains or regex patterns when enclosed in /pattern/
+func matchesGrepPattern(line, pattern string) bool {
+	// Check if it's a regex pattern (enclosed in slashes)
+	if strings.HasPrefix(pattern, "/") && strings.HasSuffix(pattern, "/") && len(pattern) > 2 {
+		regexPattern := pattern[1 : len(pattern)-1]
+		reg, err := regexp.Compile(regexPattern)
+		if err == nil && reg.MatchString(line) {
+			return true
+		}
+		return false
+	}
+
+	// Support for egrep-like alternation with |
+	if strings.Contains(pattern, "|") {
+		patterns := strings.Split(pattern, "|")
+		for _, p := range patterns {
+			if strings.Contains(line, p) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Simple substring match
+	return strings.Contains(line, pattern)
 }

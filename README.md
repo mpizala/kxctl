@@ -6,6 +6,7 @@ A command-line utility that enhances the usability of kubectl by applying filter
 
 - Execute kubectl commands across multiple contexts
 - Filter contexts using include/exclude patterns
+- Filter output with grep functionality (supports basic patterns and regex)
 - Safety checks for write operations requiring explicit confirmation
 - Simplify common Kubernetes operations across multiple clusters
 
@@ -41,6 +42,7 @@ Commands:
 Flags:
   -i, --include pattern   Include contexts matching pattern (can be used multiple times)
   -e, --exclude pattern   Exclude contexts matching pattern (can be used multiple times)
+  -g, --grep pattern      Filter command output to lines matching pattern
   -t, --timeout duration  Set timeout for kubectl commands (e.g. 30s, 1m, 2m30s)
   -f, --force             Force execution of write operations
   -A, --all-namespaces    Show resources across all namespaces (status command)
@@ -85,6 +87,9 @@ kxctl status -- --namespace webapp
 
 # Run a command with a timeout (useful for slow or unresponsive clusters)
 kxctl exec -t 30s -- get pods
+
+# Filter kubectl output with pipe-like syntax using the --grep flag
+kxctl exec -g "coredns|web-app" -- get pods -A
 ```
 
 ## License

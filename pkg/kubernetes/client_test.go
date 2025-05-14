@@ -36,7 +36,7 @@ func TestExecuteCommand(t *testing.T) {
 
 	// This test doesn't actually execute kubectl since the context is fake
 	// It just verifies that the function doesn't panic
-	err := client.ExecuteCommand(context.Background(), []string{"version", "--client"}, []string{"test-context"}, true, 0)
+	err := client.ExecuteCommand(context.Background(), []string{"version", "--client"}, []string{"test-context"}, true, 0, "")
 	if err != nil {
 		t.Fatalf("ExecuteCommand() unexpected error: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestParallelExecution(t *testing.T) {
 
 	// Execute a simple command with a timeout
 	// This doesn't test actual parallelism but ensures the code path works without panics
-	err := client.ExecuteCommand(context.Background(), []string{"version", "--client"}, client.Contexts, true, 2*time.Second)
+	err := client.ExecuteCommand(context.Background(), []string{"version", "--client"}, client.Contexts, true, 2*time.Second, "")
 	if err != nil {
 		t.Fatalf("Parallel execution failed: %v", err)
 	}
@@ -117,6 +117,7 @@ func TestParallelExecutionPerformance(t *testing.T) {
 		client.Contexts,
 		true,
 		1*time.Second, // Set a short timeout
+		"",            // No grep pattern
 	)
 	parallelTime := time.Since(start)
 
@@ -134,5 +135,61 @@ func TestParallelExecutionPerformance(t *testing.T) {
 	if len(contexts) > 1 && parallelTime > serialTime {
 		t.Logf("Warning: Parallel execution (%v) was not faster than serial execution (%v)",
 			parallelTime, serialTime)
+	}
+}
+
+func TestGrepPatternMatching(t *testing.T) {
+	testCases := []struct {
+		name    string
+		line    string
+		pattern string
+		want    bool
+	}{
+		{
+			name:    "Simple substring match",
+			line:    "pod-abc-123 Running",
+			pattern: "Running",
+			want:    true,
+		},
+		{
+			name:    "Simple substring no match",
+			line:    "pod-abc-123 Running",
+			pattern: "Pending",
+			want:    false,
+		},
+		{
+			name:    "Alternation with pipe",
+			line:    "pod-abc-123 Running",
+			pattern: "Pending|Running",
+			want:    true,
+		},
+		{
+			name:    "Regex pattern with slashes",
+			line:    "pod-abc-123 Running",
+			pattern: "/pod-.*Running/",
+			want:    true,
+		},
+		{
+			name:    "Regex pattern with slashes no match",
+			line:    "pod-abc-123 Running",
+			pattern: "/pod-.*Pending/",
+			want:    false,
+		},
+		{
+			name:    "Empty pattern",
+			line:    "pod-abc-123 Running",
+			pattern: "",
+			want:    true, // Should always match
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := matchesGrepPattern(tc.line, tc.pattern)
+			if got != tc.want {
+				t.Errorf("matchesGrepPattern(%q, %q) = %v, want %v",
+					tc.line, tc.pattern, got, tc.want)
+			}
+		})
 	}
 }
