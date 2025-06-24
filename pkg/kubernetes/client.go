@@ -1,11 +1,13 @@
 package kubernetes
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -70,10 +72,19 @@ func isWriteOperation(args []string) bool {
 	return writeVerbs[args[0]]
 }
 
+// ContextStatus holds the execution status for each context
+type ContextStatus struct {
+	Name    string
+	Status  string
+	Started time.Time
+	Done    bool
+}
+
 // ExecuteCommand executes a kubectl command in the specified contexts
 // If timeout is greater than 0, it will be applied to each command execution
 // If grepPattern is not empty, output will be filtered to lines matching the pattern
-func (c *Client) ExecuteCommand(ctx context.Context, kubectlArgs []string, contexts []string, force bool, timeout time.Duration, grepPattern string) error {
+// If maxParallel is greater than 0, it limits the number of concurrent executions
+func (c *Client) ExecuteCommand(ctx context.Context, kubectlArgs []string, contexts []string, force bool, timeout time.Duration, grepPattern string, maxParallel int) error {
 	if isWriteOperation(kubectlArgs) && !force {
 		return fmt.Errorf("write operation detected: '%s'. Use --force flag to confirm", strings.Join(kubectlArgs, " "))
 	}
@@ -85,13 +96,50 @@ func (c *Client) ExecuteCommand(ctx context.Context, kubectlArgs []string, conte
 	// Create a mutex to protect concurrent writes to stdout/stderr
 	var outputMutex sync.Mutex
 
-	// Execute commands in parallel
+	// Create a map to track context execution status
+	statusMap := make(map[string]*ContextStatus)
+	for _, ctx := range contexts {
+		statusMap[ctx] = &ContextStatus{
+			Name:    ctx,
+			Status:  "queued",
+			Started: time.Time{},
+			Done:    false,
+		}
+	}
+
+	// Start a goroutine to handle keyboard input for progress reporting
+	progressChan := make(chan struct{})
+	terminateChan := make(chan struct{})
+	go handleKeyboardInput(statusMap, progressChan, terminateChan, &outputMutex)
+
+	// Create a semaphore to limit concurrent authentication processes
+	// This helps prevent overwhelming kubelogin or authentication mechanisms
+	concurrencyLimit := 3 // Default limit
+	if maxParallel > 0 {
+		concurrencyLimit = maxParallel
+	}
+	authSemaphore := make(chan struct{}, concurrencyLimit)
+
+	// Execute commands in parallel but with controlled concurrency
 	for _, contextName := range contexts {
 		// Capture the current context for goroutine
 		currentContext := contextName
 
 		go func() {
 			defer wg.Done()
+
+			// Acquire semaphore slot (blocks if maxConcurrent is reached)
+			authSemaphore <- struct{}{}
+			defer func() {
+				// Release semaphore when done
+				<-authSemaphore
+			}()
+
+			// Update context status
+			outputMutex.Lock()
+			statusMap[currentContext].Status = "running"
+			statusMap[currentContext].Started = time.Now()
+			outputMutex.Unlock()
 
 			// Create the kubectl command with context
 			args := append([]string{"--context", currentContext}, kubectlArgs...)
@@ -136,12 +184,21 @@ func (c *Client) ExecuteCommand(ctx context.Context, kubectlArgs []string, conte
 
 			// Add a separator line for readability between contexts
 			fmt.Println()
+
+			// Update context status to done
+			statusMap[currentContext].Done = true
+			statusMap[currentContext].Status = "completed"
+
 			outputMutex.Unlock()
 		}()
 	}
 
 	// Wait for all commands to complete
 	wg.Wait()
+
+	// Signal the keyboard handler to terminate
+	close(terminateChan)
+
 	return nil
 }
 
@@ -171,4 +228,90 @@ func matchesGrepPattern(line, pattern string) bool {
 
 	// Simple substring match
 	return strings.Contains(line, pattern)
+}
+
+// handleKeyboardInput monitors keyboard input and displays progress when Enter is pressed
+func handleKeyboardInput(statusMap map[string]*ContextStatus, progressChan chan struct{}, terminateChan chan struct{}, outputMutex *sync.Mutex) {
+	// Start a goroutine to listen for keyboard input
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		for {
+			// Read a single byte (any key)
+			input, err := reader.ReadByte()
+			if err != nil {
+				continue
+			}
+
+			// If Enter key pressed, signal to print progress
+			if input == '\n' {
+				select {
+				case progressChan <- struct{}{}:
+					// Signal sent successfully
+				default:
+					// Channel buffer full, no problem, just continue
+				}
+			}
+		}
+	}()
+
+	// Process progress report requests
+	for {
+		select {
+		case <-progressChan:
+			// Enter key was pressed, print the current status
+			printStatusReport(statusMap, outputMutex)
+		case <-terminateChan:
+			// Execution is complete, exit the goroutine
+			return
+		}
+	}
+}
+
+// printStatusReport displays the current execution status of all contexts
+func printStatusReport(statusMap map[string]*ContextStatus, outputMutex *sync.Mutex) {
+	outputMutex.Lock()
+	defer outputMutex.Unlock()
+
+	fmt.Println("\n--- Progress Status ---")
+
+	// Count statuses
+	queued := 0
+	running := 0
+	completed := 0
+	total := len(statusMap)
+
+	// Find running contexts to show details
+	var runningContexts []*ContextStatus
+
+	for _, status := range statusMap {
+		switch status.Status {
+		case "queued":
+			queued++
+		case "running":
+			running++
+			runningContexts = append(runningContexts, status)
+		case "completed":
+			completed++
+		}
+	}
+
+	// Print summary
+	fmt.Printf("Total: %d, Completed: %d, Running: %d, Queued: %d\n", total, completed, running, queued)
+
+	// Print details for running contexts
+	if len(runningContexts) > 0 {
+		fmt.Println("\nCurrently running:")
+
+		// Sort running contexts by name
+		sort.Slice(runningContexts, func(i, j int) bool {
+			return runningContexts[i].Name < runningContexts[j].Name
+		})
+
+		for _, status := range runningContexts {
+			elapsed := time.Since(status.Started).Round(time.Second)
+			fmt.Printf("  %s - running for %s\n", status.Name, elapsed)
+		}
+	}
+
+	fmt.Println("----------------------")
 }

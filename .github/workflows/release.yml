@@ -45,11 +45,11 @@ jobs:
     needs: goreleaser
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout homebrew-tap
+      - name: Checkout homebrew-utils
         uses: actions/checkout@v4
         with:
-          repository: mpizala/homebrew-tap
-          path: homebrew-tap
+          repository: mpizala/homebrew-utils
+          path: homebrew-utils
           token: ${{ secrets.HOMEBREW_PAT }}
 
       - name: Get release info
@@ -108,7 +108,7 @@ jobs:
           DOWNLOAD_URL="${{ fromJson(steps.release.outputs.result).download_url }}"
           SHA256="${{ steps.sha.outputs.sha256 }}"
 
-          cd homebrew-tap
+          cd homebrew-utils
 
           sed -i "s|url \".*\"|url \"$DOWNLOAD_URL\"|g" Formula/kxctl.rb
           sed -i "s|sha256 \".*\"|sha256 \"$SHA256\"|g" Formula/kxctl.rb
@@ -116,7 +116,7 @@ jobs:
 
       - name: Commit and push changes
         run: |
-          cd homebrew-tap
+          cd homebrew-utils
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add Formula/kxctl.rb

@@ -2,8 +2,11 @@ package kubernetes
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/exec"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -36,7 +39,7 @@ func TestExecuteCommand(t *testing.T) {
 
 	// This test doesn't actually execute kubectl since the context is fake
 	// It just verifies that the function doesn't panic
-	err := client.ExecuteCommand(context.Background(), []string{"version", "--client"}, []string{"test-context"}, true, 0, "")
+	err := client.ExecuteCommand(context.Background(), []string{"version", "--client"}, []string{"test-context"}, true, 0, "", 0)
 	if err != nil {
 		t.Fatalf("ExecuteCommand() unexpected error: %v", err)
 	}
@@ -55,7 +58,7 @@ func TestParallelExecution(t *testing.T) {
 
 	// Execute a simple command with a timeout
 	// This doesn't test actual parallelism but ensures the code path works without panics
-	err := client.ExecuteCommand(context.Background(), []string{"version", "--client"}, client.Contexts, true, 2*time.Second, "")
+	err := client.ExecuteCommand(context.Background(), []string{"version", "--client"}, client.Contexts, true, 2*time.Second, "", 0)
 	if err != nil {
 		t.Fatalf("Parallel execution failed: %v", err)
 	}
@@ -118,6 +121,7 @@ func TestParallelExecutionPerformance(t *testing.T) {
 		true,
 		1*time.Second, // Set a short timeout
 		"",            // No grep pattern
+		2,             // Limited parallelism
 	)
 	parallelTime := time.Since(start)
 
@@ -135,6 +139,60 @@ func TestParallelExecutionPerformance(t *testing.T) {
 	if len(contexts) > 1 && parallelTime > serialTime {
 		t.Logf("Warning: Parallel execution (%v) was not faster than serial execution (%v)",
 			parallelTime, serialTime)
+	}
+}
+
+func TestProgressTracking(t *testing.T) {
+	// Create test status map
+	statusMap := make(map[string]*ContextStatus)
+	statusMap["context-1"] = &ContextStatus{
+		Name:    "context-1",
+		Status:  "running",
+		Started: time.Now().Add(-30 * time.Second),
+		Done:    false,
+	}
+	statusMap["context-2"] = &ContextStatus{
+		Name:    "context-2",
+		Status:  "queued",
+		Started: time.Time{},
+		Done:    false,
+	}
+	statusMap["context-3"] = &ContextStatus{
+		Name:    "context-3",
+		Status:  "completed",
+		Started: time.Now().Add(-60 * time.Second),
+		Done:    true,
+	}
+
+	// Redirect stdout to capture output
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// Create a mutex for testing
+	var mu sync.Mutex
+
+	// Call the function we want to test
+	printStatusReport(statusMap, &mu)
+
+	// Restore stdout
+	w.Close()
+	os.Stdout = originalStdout
+
+	// Read captured output
+	var buf strings.Builder
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	// Check that output contains expected information
+	if !strings.Contains(output, "Total: 3, Completed: 1, Running: 1, Queued: 1") {
+		t.Errorf("Status summary incorrect: %s", output)
+	}
+	if !strings.Contains(output, "context-1") {
+		t.Errorf("Missing running context details: %s", output)
+	}
+	if strings.Contains(output, "context-2") {
+		t.Errorf("Should not show queued contexts in details: %s", output)
 	}
 }
 

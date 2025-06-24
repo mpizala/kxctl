@@ -7,6 +7,7 @@ A command-line utility that enhances the usability of kubectl by applying filter
 - Execute kubectl commands across multiple contexts
 - Filter contexts using include/exclude patterns
 - Filter output with grep functionality (supports basic patterns and regex)
+- Interactive progress tracking (press Enter during execution to see status)
 - Safety checks for write operations requiring explicit confirmation
 - Simplify common Kubernetes operations across multiple clusters
 
@@ -15,7 +16,7 @@ A command-line utility that enhances the usability of kubectl by applying filter
 ### Using Homebrew (macOS and Linux)
 
 ```bash
-brew install mpizala/tap/kxctl
+brew install mpizala/utils/kxctl
 ```
 
 ### Using Go
@@ -43,6 +44,7 @@ Flags:
   -i, --include pattern   Include contexts matching pattern (can be used multiple times)
   -e, --exclude pattern   Exclude contexts matching pattern (can be used multiple times)
   -g, --grep pattern      Filter command output to lines matching pattern
+  -p, --parallel number   Limit parallel execution to specified number of contexts
   -t, --timeout duration  Set timeout for kubectl commands (e.g. 30s, 1m, 2m30s)
   -f, --force             Force execution of write operations
   -A, --all-namespaces    Show resources across all namespaces (status command)
@@ -90,6 +92,13 @@ kxctl exec -t 30s -- get pods
 
 # Filter kubectl output with pipe-like syntax using the --grep flag
 kxctl exec -g "coredns|web-app" -- get pods -A
+
+# Interactive progress tracking: run a command and press Enter during execution
+# to see which clusters are currently being processed
+kxctl exec -i prod -- get pods  # Press Enter while waiting to see progress
+
+# Limit parallel execution to prevent kubelogin or authentication issues
+kxctl exec -p 3 -i prod -- get pods
 ```
 
 ## License
